@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>saehanFEMS · 공장 설비 비가동 분석 대시보드</title>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- SheetJS (xlsx) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --surface: #ffffff;
+    --border: #e3e7ef;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --run: #22c55e;
+    --down: #f59e0b;
+    --stop: #ef4444;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header.app-header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff;
+    padding: 20px 28px;
+    box-shadow: var(--shadow);
+  }
+  header .brand { display: flex; align-items: baseline; gap: 12px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  header .tagline { font-size: 12px; opacity: 0.85; }
+  header .security-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 3px 10px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+  }
+
+  main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* ========== Upload View ========== */
+  .upload-view { display: grid; gap: 20px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 { margin: 0 0 12px 0; font-size: 15px; font-weight: 600; }
+  .card .hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  .dropzone {
+    border: 2px dashed #cbd5e1;
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    transition: all 0.15s;
+    background: #fafbff;
+    cursor: pointer;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--primary);
+    background: #eff6ff;
+  }
+  .dropzone .icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
+  .dropzone .label { font-weight: 600; margin-bottom: 4px; }
+  .dropzone .sub { font-size: 12px; color: var(--muted); }
+  .dropzone input[type=file] { display: none; }
+
+  .file-list { margin-top: 12px; display: grid; gap: 6px; }
+  .file-chip {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .file-chip .name { font-weight: 500; }
+  .file-chip .size { color: var(--muted); font-size: 11px; }
+  .file-chip button {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 16px; line-height: 1;
+  }
+
+  .analyze-row { display: flex; justify-content: center; margin-top: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+  .btn-secondary {
+    background: #fff; color: var(--text); border-color: var(--border);
+  }
+  .btn-secondary:hover { background: #f8fafc; }
+  .btn-large { padding: 12px 32px; font-size: 15px; }
+
+  details.help-box {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+  details.help-box summary { font-weight: 600; cursor: pointer; }
+  details.help-box pre {
+    background: #1e293b; color: #e2e8f0;
+    padding: 12px; border-radius: 6px;
+    font-size: 11px; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  details.help-box .steps { margin-top: 8px; font-size: 13px; }
+
+  /* ========== Dashboard ========== */
+  .dashboard { display: none; }
+  .dashboard.active { display: block; }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .toolbar .filter-group { display: flex; align-items: center; gap: 6px; }
+  .toolbar label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .toolbar select {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    min-width: 120px;
+  }
+  .toolbar .spacer { flex: 1; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    padding: 10px 18px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .kpi .label {
+    font-size: 12px; color: var(--muted); font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+  .kpi .unit { font-size: 13px; color: var(--muted); margin-left: 2px; }
+  .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .kpi.run .value { color: var(--run); }
+  .kpi.down .value { color: var(--down); }
+  .kpi.stop .value { color: var(--stop); }
+
+  .panel-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+  }
+  .panel-grid.two { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .panel-grid.two { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .panel h3 {
+    margin: 0 0 12px 0; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel h3 .meta { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .chart-wrap { position: relative; height: 300px; }
+  .chart-wrap.tall { height: 400px; }
+
+  /* ========== Heatmap ========== */
+  .heatmap-wrap { overflow-x: auto; }
+  table.heatmap {
+    border-collapse: collapse;
+    font-size: 11px;
+    width: 100%;
+    min-width: 760px;
+  }
+  table.heatmap th, table.heatmap td {
+    border: 1px solid #fff;
+    padding: 0; text-align: center;
+    white-space: nowrap;
+  }
+  table.heatmap th {
+    background: #f1f5f9; font-weight: 500; padding: 4px 6px;
+    position: sticky; top: 0;
+  }
+  table.heatmap th.eq {
+    text-align: left; min-width: 140px; max-width: 180px;
+    position: sticky; left: 0; z-index: 2;
+    background: #f1f5f9;
+    padding-left: 8px; padding-right: 8px;
+  }
+  table.heatmap td.eq {
+    text-align: left; padding: 4px 8px;
+    position: sticky; left: 0; z-index: 1;
+    background: #fff;
+    font-weight: 500;
+  }
+  table.heatmap td.cell {
+    width: 28px; height: 24px;
+    cursor: default;
+  }
+  .legend {
+    display: flex; gap: 16px; margin-top: 10px;
+    font-size: 11px; color: var(--muted);
+  }
+  .legend .swatch {
+    display: inline-block; width: 14px; height: 14px;
+    border-radius: 3px; vertical-align: middle; margin-right: 4px;
+  }
+
+  /* ========== Table ========== */
+  table.data {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  table.data th, table.data td {
+    padding: 7px 10px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.data th { background: #f8fafc; font-weight: 600; }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data tbody tr:hover { background: #f8fafc; }
+
+  .bar-cell {
+    position: relative;
+    background: #f1f5f9;
+    border-radius: 3px;
+    height: 14px;
+    min-width: 100px;
+  }
+  .bar-cell .fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    border-radius: 3px;
+  }
+
+  .status-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .status-tag.run { background: #dcfce7; color: #15803d; }
+  .status-tag.down { background: #fef3c7; color: #b45309; }
+  .status-tag.stop { background: #fee2e2; color: #b91c1c; }
+
+  .actions-bar {
+    display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
+  }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px;
+    color: var(--muted); font-size: 13px;
+  }
+
+  .status-bar {
+    position: fixed; bottom: 16px; right: 16px;
+    background: var(--text); color: #fff;
+    padding: 10px 16px; border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    font-size: 13px; opacity: 0; transform: translateY(10px);
+    transition: all 0.2s; pointer-events: none;
+    max-width: 400px;
+  }
+  .status-bar.visible { opacity: 1; transform: translateY(0); }
+  .status-bar.error { background: #b91c1c; }
+  .status-bar.success { background: #15803d; }
+
+  /* ========== Threshold Modal ========== */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.visible { display: flex; }
+  .modal {
+    background: #fff; border-radius: var(--radius); padding: 20px;
+    width: 90%; max-width: 540px; max-height: 80vh; overflow: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  }
+  .modal h2 { margin: 0 0 12px 0; font-size: 16px; }
+  .modal .threshold-row {
+    display: grid; grid-template-columns: 1fr 90px 90px;
+    gap: 8px; align-items: center; margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .modal .threshold-row.header { font-weight: 600; color: var(--muted); }
+  .modal input[type=number] {
+    width: 100%; padding: 5px 8px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 12px;
+  }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  /* ========== Print ========== */
+  @media print {
+    body { background: #fff; font-size: 11px; }
+    header.app-header { background: #1e3a8a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .upload-view, .tabs, .actions-bar, .toolbar .btn, .status-bar { display: none !important; }
+    main { padding: 0; max-width: none; }
+    .tab-content { display: block !important; page-break-after: always; }
+    .tab-content:last-child { page-break-after: auto; }
+    .panel, .kpi, .card { box-shadow: none; border: 1px solid #cbd5e1; }
+    .chart-wrap { height: 260px; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <h1>saehanFEMS</h1>
+    <span class="tagline">공장 설비 비가동 분석 대시보드</span>
+  </div>
+  <div class="security-badge">🔒 브라우저 내 분석 · 데이터 외부 전송 없음</div>
+</header>
+
+<main>
+
+  <!-- ============== Upload View ============== -->
+  <section id="upload-view" class="upload-view">
+    <div class="card">
+      <h2>1. 자료 올리기</h2>
+      <p class="hint">EMS 전류 JSON은 필수, MOLD 생산 실적은 선택입니다. 파일은 PC 브라우저 내부에서만 분석됩니다.</p>
+
+      <div class="panel-grid two">
+        <div>
+          <div class="dropzone" id="ems-drop">
+            <input type="file" id="ems-input" accept=".json,application/json" />
+            <div class="icon">📊</div>
+            <div class="label">EMS 전류 (JSON) · 필수</div>
+            <div class="sub">1분 단위 전류 데이터 · 클릭하거나 파일을 끌어다 놓으세요</div>
+          </div>
+          <div class="file-list" id="ems-list"></div>
+        </div>
+        <div>
+          <div class="dropzone" id="mold-drop">
+            <input type="file" id="mold-input" accept=".xls,.xlsx,.csv" multiple />
+            <div class="icon">📦</div>
+            <div class="label">MOLD 생산 실적 (Excel/CSV) · 선택</div>
+            <div class="sub">부서별 파일 다중 선택 가능</div>
+          </div>
+          <div class="file-list" id="mold-list"></div>
+        </div>
+      </div>
+
+      <div class="analyze-row" style="margin-top: 20px;">
+        <button id="analyze-btn" class="btn btn-primary btn-large" disabled>분석하기 →</button>
+      </div>
+    </div>
+
+    <details class="help-box">
+      <summary>EMS JSON 데이터 추출 방법 (즐겨찾기 스크립트)</summary>
+      <div class="steps">
+        <p>사내 EMS 시스템 화면에서 아래 즐겨찾기(북마크릿)를 실행하면, 분석 기간(07:00 ~ 익일 07:00) 전류 데이터가 JSON으로 자동 저장됩니다. 아래 <strong>3단계</strong>를 따라주세요.</p>
+
+        <h4 style="margin: 14px 0 6px 0; font-size: 13px;">1. 즐겨찾기(북마크) 생성</h4>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>사용 중인 웹 브라우저(Chrome, Edge 등)에서 <strong>새 북마크/즐겨찾기</strong>를 생성합니다.</li>
+          <li>URL(웹주소) 입력 칸에 <strong>웹 주소 대신</strong> 아래 검은색 상자 안의 JavaScript 코드를 그대로 복사해 붙여넣고 저장합니다.</li>
+          <li>예: <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">javascript:(function(){ ... })();</code> 형태의 코드</li>
+        </ul>
+
+        <h4 style="margin: 14px 0 6px 0; font-size: 13px;">2. EMS 웹페이지 접속 및 스크립트 실행</h4>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>데이터 추출 대상인 <strong>사내 EMS 조회 화면</strong>에 접속합니다.</li>
+          <li>조회 기준 시간(<strong>07:00 ~ 익일 07:00</strong>)을 확인한 뒤, 1단계에서 만들어둔 즐겨찾기를 클릭합니다.</li>
+          <li>웹페이지 내부 데이터가 자바스크립트에 의해 <strong>파싱(Parsing)</strong>된 후, JSON 파일이 자동으로 다운로드됩니다.</li>
+        </ul>
+
+        <h4 style="margin: 14px 0 6px 0; font-size: 13px;">3. 분석 페이지에 업로드</h4>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>다운로드된 JSON 파일을 이 분석기 페이지의 <strong>파일 업로드 영역</strong>으로 드래그 앤 드롭하거나 선택하여 업로드합니다.</li>
+        </ul>
+
+        <h4 style="margin: 14px 0 6px 0; font-size: 13px;">즐겨찾기 스크립트 코드</h4>
+        <pre>javascript:(function(){ /* TODO: 사내 EMS 환경에 맞춰 북마크 스크립트 삽입 */ alert('즐겨찾기 스크립트 자리입니다.'); })();</pre>
+      </div>
+    </details>
+
+    <details class="help-box">
+      <summary>샘플 JSON 포맷</summary>
+      <pre>{
+  "meta": { "factory": "A공장", "from": "2026-10-27T07:00", "to": "2026-10-28T07:00" },
+  "equipments": [
+    {
+      "id": "EQ-001",
+      "name": "사출기 1호",
+      "samples": [
+        { "t": "2026-10-27T07:00", "a": 12.4 },
+        { "t": "2026-10-27T07:01", "a": 0.0 }
+      ]
+    }
+  ]
+}</pre>
+    </details>
+  </section>
+
+  <!-- ============== Dashboard ============== -->
+  <section id="dashboard" class="dashboard">
+    <div class="toolbar">
+      <div class="filter-group">
+        <label>공장</label>
+        <select id="filter-factory"><option value="">전체</option></select>
+      </div>
+      <div class="filter-group">
+        <label>설비</label>
+        <select id="filter-equipment"><option value="">전체</option></select>
+      </div>
+      <div class="filter-group">
+        <label>교대</label>
+        <select id="filter-shift">
+          <option value="">전체</option>
+          <option value="day">주간 (07:00-19:00)</option>
+          <option value="night">야간 (19:00-07:00)</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary" id="threshold-btn">⚙ 상태 임계값</button>
+      <div class="spacer"></div>
+      <button class="btn btn-secondary" id="reset-btn">새 분석</button>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="overview">개요</button>
+      <button class="tab-btn" data-tab="time">시간대 분석</button>
+      <button class="tab-btn" data-tab="cause">원인 분석</button>
+      <button class="tab-btn" data-tab="week">주간 요약</button>
+    </nav>
+
+    <!-- ===== Overview Tab ===== -->
+    <div class="tab-content active" data-tab="overview">
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <div class="panel-grid two">
+        <div class="panel">
+          <h3>상태 분포 <span class="meta">전체 운영 시간 기준</span></h3>
+          <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+          <div class="legend">
+            <div><span class="swatch" style="background: var(--run)"></span>Run · 정상</div>
+            <div><span class="swatch" style="background: var(--down)"></span>Down · 저가동</div>
+            <div><span class="swatch" style="background: var(--stop)"></span>Stop · 정지</div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>설비별 가동률 <span class="meta">높은 순</span></h3>
+          <div style="max-height: 320px; overflow-y: auto;">
+            <table class="data" id="eq-summary-table">
+              <thead>
+                <tr>
+                  <th>설비</th>
+                  <th class="num">Run</th>
+                  <th class="num">Down</th>
+                  <th class="num">Stop</th>
+                  <th class="num">가동률</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Time Tab ===== -->
+    <div class="tab-content" data-tab="time">
+      <div class="panel">
+        <h3>히트맵 <span class="meta">07:00 ~ 익일 07:00 · 설비 × 시간</span></h3>
+        <div class="heatmap-wrap" id="heatmap-wrap"></div>
+        <div class="legend">
+          <div><span class="swatch" style="background: var(--run)"></span>Run</div>
+          <div><span class="swatch" style="background: var(--down)"></span>Down</div>
+          <div><span class="swatch" style="background: var(--stop)"></span>Stop</div>
+          <div><span class="swatch" style="background: #e5e7eb"></span>데이터 없음</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>시간대별 상태 분포 <span class="meta">24시간 (07시 ~ 익일 07시)</span></h3>
+        <div class="chart-wrap tall"><canvas id="chart-hourly"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ===== Cause Tab ===== -->
+    <div class="tab-content" data-tab="cause">
+      <div class="panel">
+        <h3>설비별 비가동 시간 파레토 <span class="meta">Stop + Down 합계 기준</span></h3>
+        <div class="chart-wrap tall"><canvas id="chart-pareto"></canvas></div>
+      </div>
+      <div class="panel-grid two">
+        <div class="panel">
+          <h3>교대별 비가동 시간</h3>
+          <div class="chart-wrap"><canvas id="chart-shift"></canvas></div>
+        </div>
+        <div class="panel">
+          <h3>MOLD 생산 수량 (12시간 전/후)</h3>
+          <div class="chart-wrap" id="mold-chart-wrap"><canvas id="chart-mold"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Weekly Summary Tab ===== -->
+    <div class="tab-content" data-tab="week">
+      <div class="panel">
+        <h3>일자별 요약</h3>
+        <div id="weekly-content"><div class="empty-state">분석 기간이 2일 이상일 때 상세 추세가 표시됩니다.</div></div>
+      </div>
+      <div class="panel">
+        <h3>세부 데이터 (설비별 집계)</h3>
+        <div style="overflow-x: auto;">
+          <table class="data" id="detail-table">
+            <thead>
+              <tr>
+                <th>공장</th>
+                <th>설비</th>
+                <th class="num">Run (분)</th>
+                <th class="num">Down (분)</th>
+                <th class="num">Stop (분)</th>
+                <th class="num">가동률</th>
+                <th class="num">생산 수량</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-secondary" onclick="window.print()">🖨 화면 인쇄 / PDF</button>
+      <button class="btn btn-primary" id="excel-btn">📥 엑셀 보고서 받기</button>
+    </div>
+  </section>
+
+</main>
+
+<div class="status-bar" id="status-bar"></div>
+
+<!-- ========== Threshold Modal ========== -->
+<div class="modal-backdrop" id="threshold-modal">
+  <div class="modal">
+    <h2>⚙ 상태 판별 임계값</h2>
+    <p class="hint" style="font-size: 12px; color: var(--muted);">
+      전류값이 <strong>Stop 임계값 미만</strong>이면 정지(Stop),<br>
+      <strong>Stop ≤ 전류 &lt; Run 임계값</strong>이면 저가동(Down),<br>
+      <strong>Run 임계값 이상</strong>이면 정상 가동(Run)으로 분류합니다.
+    </p>
+    <div style="margin-top: 12px;">
+      <div class="threshold-row header">
+        <div>설비</div>
+        <div>Stop 미만 (A)</div>
+        <div>Run 이상 (A)</div>
+      </div>
+      <div id="threshold-rows"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="threshold-cancel">취소</button>
+      <button class="btn btn-primary" id="threshold-apply">적용 · 재분석</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ================================================================
+// 전역 상태
+// ================================================================
+const COLORS = { run: '#22c55e', down: '#f59e0b', stop: '#ef4444' };
+const SHIFT_DAY_START = 7;    // 주간 07:00 시작
+const SHIFT_NIGHT_START = 19; // 야간 19:00 시작
+const WORK_DAY_START = 7;     // 하루의 기준: 07:00
+
+const state = {
+  emsFile: null,
+  moldFiles: [],
+  emsRaw: null,
+  moldRows: [],
+  thresholds: {},   // { equipmentId: { stop, run } }
+  analyzed: null,   // 분석 결과
+  filters: { factory: '', equipment: '', shift: '' },
+  charts: {},
+};
+
+// ================================================================
+// 유틸
+// ================================================================
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return [...document.querySelectorAll(sel)]; }
+
+function showStatus(message, kind) {
+  const el = $('#status-bar');
+  el.textContent = message;
+  el.className = 'status-bar visible' + (kind ? ' ' + kind : '');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => el.classList.remove('visible'), 3200);
+}
+
+function fmtDuration(mins) {
+  if (!mins) return '0분';
+  if (mins < 60) return mins.toFixed(0) + '분';
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return `${h}시간 ${m}분`;
+}
+
+function fmtPct(ratio) {
+  if (!isFinite(ratio)) return '-';
+  return (ratio * 100).toFixed(1) + '%';
+}
+
+function parseTimestamp(t) {
+  // ISO or similar
+  const d = new Date(t);
+  if (!isNaN(d.getTime())) return d;
+  // "2026-10-27 07:00" 형식 대응
+  return new Date(String(t).replace(' ', 'T'));
+}
+
+// 07:00을 하루 시작으로 간주하는 "work day" 라벨
+function workDayLabel(date) {
+  const d = new Date(date);
+  if (d.getHours() < WORK_DAY_START) d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 하루 안에서 07:00 기준 분(min) offset: 0 = 07:00, 1439 = 익일 06:59
+function workDayMinuteOffset(date) {
+  const d = new Date(date);
+  let h = d.getHours();
+  if (h < WORK_DAY_START) h += 24;
+  return (h - WORK_DAY_START) * 60 + d.getMinutes();
+}
+
+function classifyShift(date) {
+  const h = date.getHours();
+  return (h >= SHIFT_DAY_START && h < SHIFT_NIGHT_START) ? 'day' : 'night';
+}
+
+// ================================================================
+// 파일 업로드
+// ================================================================
+function setupDropzone(dropId, inputId, onFiles, multiple) {
+  const drop = $(dropId);
+  const input = $(inputId);
+  drop.addEventListener('click', () => input.click());
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('drag-over');
+    const files = [...e.dataTransfer.files];
+    onFiles(multiple ? files : files.slice(0, 1));
+  });
+  input.addEventListener('change', (e) => {
+    const files = [...e.target.files];
+    onFiles(multiple ? files : files.slice(0, 1));
+    input.value = '';
+  });
+}
+
+function renderFileList(listId, files, onRemove) {
+  const list = $(listId);
+  list.innerHTML = '';
+  files.forEach((f, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `
+      <div><span class="name">${f.name}</span> <span class="size">(${(f.size/1024).toFixed(1)} KB)</span></div>
+      <button data-i="${i}" title="제거">×</button>
+    `;
+    chip.querySelector('button').onclick = () => onRemove(i);
+    list.appendChild(chip);
+  });
+}
+
+function updateAnalyzeButton() {
+  $('#analyze-btn').disabled = !state.emsFile;
+}
+
+setupDropzone('#ems-drop', '#ems-input', (files) => {
+  state.emsFile = files[0] || null;
+  renderFileList('#ems-list', state.emsFile ? [state.emsFile] : [], () => {
+    state.emsFile = null;
+    renderFileList('#ems-list', [], () => {});
+    updateAnalyzeButton();
+  });
+  updateAnalyzeButton();
+}, false);
+
+setupDropzone('#mold-drop', '#mold-input', (files) => {
+  state.moldFiles.push(...files);
+  renderFileList('#mold-list', state.moldFiles, (i) => {
+    state.moldFiles.splice(i, 1);
+    renderFileList('#mold-list', state.moldFiles, arguments.callee);
+  });
+}, true);
+
+// ================================================================
+// EMS JSON 로드
+// ================================================================
+async function loadEms(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+  if (!data.equipments || !Array.isArray(data.equipments)) {
+    throw new Error('EMS JSON 포맷이 올바르지 않습니다. "equipments" 배열이 필요합니다.');
+  }
+  return data;
+}
+
+// ================================================================
+// MOLD Excel/CSV 로드
+// ================================================================
+async function loadMold(files) {
+  const rows = [];
+  for (const f of files) {
+    const buf = await f.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    for (const sheetName of wb.SheetNames) {
+      const sheet = wb.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      data.forEach(r => rows.push(normalizeMoldRow(r, f.name, sheetName)));
+    }
+  }
+  return rows.filter(Boolean);
+}
+
+function normalizeMoldRow(r, fileName, sheetName) {
+  // 유연한 컬럼 매칭 (한/영 모두)
+  const pick = (keys) => {
+    for (const k of keys) {
+      for (const col in r) {
+        if (col && col.toString().replace(/\s/g, '').toLowerCase() === k.toLowerCase()) {
+          return r[col];
+        }
+      }
+    }
+    return null;
+  };
+  const eqId = pick(['설비id', '설비ID', 'equipmentid', 'equipid', '설비', 'eq']);
+  const date = pick(['일자', '날짜', 'date']);
+  const start = pick(['시작시각', 'start', 'starttime']);
+  const end = pick(['종료시각', 'end', 'endtime']);
+  const qty = pick(['수량', 'qty', 'quantity', '개수']);
+  const dept = pick(['부서', 'department', 'dept']) || sheetName || fileName;
+
+  if (!eqId || qty == null) return null;
+  return {
+    equipmentId: String(eqId).trim(),
+    date: date ? parseTimestamp(date) : null,
+    startTime: start,
+    endTime: end,
+    quantity: Number(qty) || 0,
+    department: String(dept).trim(),
+    source: fileName,
+  };
+}
+
+// ================================================================
+// 임계값 자동 계산
+// ================================================================
+function autoThresholds(ems) {
+  const map = {};
+  ems.equipments.forEach(eq => {
+    const vals = (eq.samples || []).map(s => Number(s.a) || 0).filter(v => v > 0.1);
+    if (vals.length === 0) {
+      map[eq.id] = { stop: 0.5, run: 1.0 };
+      return;
+    }
+    vals.sort((a, b) => a - b);
+    const p75 = vals[Math.floor(vals.length * 0.75)];
+    map[eq.id] = {
+      stop: 0.5,
+      run: Math.max(0.5, Number((p75 * 0.7).toFixed(2))),
+    };
+  });
+  return map;
+}
+
+// ================================================================
+// 상태 판별 + 집계
+// ================================================================
+function classify(a, threshold) {
+  if (a < threshold.stop) return 'stop';
+  if (a < threshold.run) return 'down';
+  return 'run';
+}
+
+function analyze(ems, moldRows, thresholds) {
+  const result = {
+    factory: ems.meta?.factory || '미지정',
+    from: ems.meta?.from,
+    to: ems.meta?.to,
+    equipments: [],
+    workDays: new Set(),
+    hourly: {},   // workHour (0~23) -> { run, down, stop }
+    shift: { day: { run: 0, down: 0, stop: 0 }, night: { run: 0, down: 0, stop: 0 } },
+    totalMinutes: 0,
+    totalMold: 0,
+    moldByEq: {},
+    moldFirst12: 0,
+    moldLast12: 0,
+  };
+
+  // MOLD 집계 (설비별 수량)
+  moldRows.forEach(r => {
+    if (!result.moldByEq[r.equipmentId]) result.moldByEq[r.equipmentId] = 0;
+    result.moldByEq[r.equipmentId] += r.quantity;
+    result.totalMold += r.quantity;
+  });
+
+  for (let h = 0; h < 24; h++) {
+    result.hourly[h] = { run: 0, down: 0, stop: 0 };
+  }
+
+  ems.equipments.forEach(eq => {
+    const th = thresholds[eq.id] || { stop: 0.5, run: 1.0 };
+    const samples = (eq.samples || []).map(s => ({
+      date: parseTimestamp(s.t),
+      a: Number(s.a) || 0,
+    })).filter(s => !isNaN(s.date.getTime()));
+
+    const eqAgg = {
+      id: eq.id,
+      name: eq.name || eq.id,
+      factory: eq.factory || ems.meta?.factory || '미지정',
+      run: 0, down: 0, stop: 0,
+      total: 0,
+      threshold: th,
+      cells: {}, // workMinuteOffset -> state (for heatmap aggregation at hour level)
+      hourly: {},
+    };
+    for (let h = 0; h < 24; h++) {
+      eqAgg.hourly[h] = { run: 0, down: 0, stop: 0 };
+    }
+
+    samples.forEach(s => {
+      const state_ = classify(s.a, th);
+      eqAgg[state_] += 1;
+      eqAgg.total += 1;
+
+      const workMinute = workDayMinuteOffset(s.date);
+      const workHour = Math.floor(workMinute / 60);
+      if (workHour >= 0 && workHour < 24) {
+        eqAgg.hourly[workHour][state_] += 1;
+        result.hourly[workHour][state_] += 1;
+      }
+
+      const shift = classifyShift(s.date);
+      result.shift[shift][state_] += 1;
+
+      result.workDays.add(workDayLabel(s.date));
+
+      // 셀 (시간 단위) 저장 → heatmap 생성 시 '가장 나쁜 상태' 선택
+      const cellKey = workHour;
+      if (!eqAgg.cells[cellKey]) eqAgg.cells[cellKey] = { run: 0, down: 0, stop: 0 };
+      eqAgg.cells[cellKey][state_] += 1;
+
+      // MOLD 12시간 전/후 비교: workMinute < 720 이면 전반, 아니면 후반
+      // (워크타임 기준이 아니므로 수량 비교는 아래에서 별도 계산)
+    });
+
+    eqAgg.utilization = eqAgg.total > 0 ? eqAgg.run / eqAgg.total : 0;
+    eqAgg.moldQty = result.moldByEq[eq.id] || 0;
+    result.equipments.push(eqAgg);
+    result.totalMinutes += eqAgg.total;
+  });
+
+  // MOLD 12시간 비교 (workday 기준 전반/후반)
+  moldRows.forEach(r => {
+    if (!r.date) return;
+    // startTime 또는 date 기준으로 workDayMinuteOffset 계산 시도
+    let dt = r.date;
+    if (r.startTime) {
+      try {
+        if (r.startTime instanceof Date) dt = r.startTime;
+        else {
+          const base = new Date(r.date);
+          const [hh, mm] = String(r.startTime).split(':').map(Number);
+          if (!isNaN(hh)) { base.setHours(hh, mm || 0, 0, 0); dt = base; }
+        }
+      } catch (e) {}
+    }
+    const wm = workDayMinuteOffset(dt);
+    if (wm < 720) result.moldFirst12 += r.quantity;
+    else result.moldLast12 += r.quantity;
+  });
+
+  return result;
+}
+
+// ================================================================
+// 필터 적용
+// ================================================================
+function applyFilters(result) {
+  const f = state.filters;
+  const filtered = JSON.parse(JSON.stringify(result));
+  filtered.workDays = new Set(result.workDays);
+
+  // 설비 필터
+  filtered.equipments = result.equipments.filter(eq => {
+    if (f.factory && eq.factory !== f.factory) return false;
+    if (f.equipment && eq.id !== f.equipment) return false;
+    return true;
+  });
+
+  // 집계 재계산 (교대 필터는 상태 집계에만 영향)
+  filtered.hourly = {};
+  for (let h = 0; h < 24; h++) filtered.hourly[h] = { run: 0, down: 0, stop: 0 };
+  filtered.shift = { day: { run: 0, down: 0, stop: 0 }, night: { run: 0, down: 0, stop: 0 } };
+  filtered.totalMinutes = 0;
+  let totalRun = 0, totalDown = 0, totalStop = 0;
+
+  filtered.equipments.forEach(eq => {
+    let eqRun = 0, eqDown = 0, eqStop = 0, eqTotal = 0;
+    for (let h = 0; h < 24; h++) {
+      const isDayHour = (h + WORK_DAY_START) % 24 < SHIFT_NIGHT_START
+                     && (h + WORK_DAY_START) % 24 >= SHIFT_DAY_START;
+      const shiftOfHour = isDayHour ? 'day' : 'night';
+      if (f.shift && f.shift !== shiftOfHour) continue;
+      const hour = eq.hourly[h];
+      eqRun += hour.run; eqDown += hour.down; eqStop += hour.stop;
+      filtered.hourly[h].run += hour.run;
+      filtered.hourly[h].down += hour.down;
+      filtered.hourly[h].stop += hour.stop;
+      filtered.shift[shiftOfHour].run += hour.run;
+      filtered.shift[shiftOfHour].down += hour.down;
+      filtered.shift[shiftOfHour].stop += hour.stop;
+    }
+    eqTotal = eqRun + eqDown + eqStop;
+    eq.run = eqRun; eq.down = eqDown; eq.stop = eqStop; eq.total = eqTotal;
+    eq.utilization = eqTotal > 0 ? eqRun / eqTotal : 0;
+    totalRun += eqRun; totalDown += eqDown; totalStop += eqStop;
+  });
+
+  filtered.totalRun = totalRun;
+  filtered.totalDown = totalDown;
+  filtered.totalStop = totalStop;
+  filtered.totalMinutes = totalRun + totalDown + totalStop;
+  filtered.utilization = filtered.totalMinutes > 0 ? totalRun / filtered.totalMinutes : 0;
+
+  return filtered;
+}
+
+// ================================================================
+// 렌더링
+// ================================================================
+function renderKpi(r) {
+  const grid = $('#kpi-grid');
+  const totalDown = r.totalDown + r.totalStop;
+  const items = [
+    { label: '종합 가동률', value: fmtPct(r.utilization), sub: `Run ${fmtDuration(r.totalRun)}` },
+    { label: '정지 시간 (Stop)', value: fmtDuration(r.totalStop), cls: 'stop', sub: fmtPct(r.totalMinutes ? r.totalStop / r.totalMinutes : 0) },
+    { label: '저가동 (Down)', value: fmtDuration(r.totalDown), cls: 'down', sub: fmtPct(r.totalMinutes ? r.totalDown / r.totalMinutes : 0) },
+    { label: '분석 설비', value: r.equipments.length, unit: '대', sub: `공장: ${new Set(r.equipments.map(e=>e.factory)).size}` },
+  ];
+  if (r.totalMold > 0) {
+    items.push({ label: '생산 수량', value: r.totalMold.toLocaleString(), unit: '개', sub: `12H 전: ${r.moldFirst12.toLocaleString()} / 후: ${r.moldLast12.toLocaleString()}` });
+  }
+  grid.innerHTML = items.map(it => `
+    <div class="kpi ${it.cls || ''}">
+      <div class="label">${it.label}</div>
+      <div class="value">${it.value}${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</div>
+      <div class="sub">${it.sub || ''}</div>
+    </div>
+  `).join('');
+}
+
+function renderStatusChart(r) {
+  const ctx = $('#chart-status').getContext('2d');
+  if (state.charts.status) state.charts.status.destroy();
+  state.charts.status = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Run · 정상', 'Down · 저가동', 'Stop · 정지'],
+      datasets: [{
+        data: [r.totalRun, r.totalDown, r.totalStop],
+        backgroundColor: [COLORS.run, COLORS.down, COLORS.stop],
+        borderWidth: 2, borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (c) => `${c.label}: ${fmtDuration(c.parsed)} (${fmtPct(c.parsed / r.totalMinutes)})`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderEquipmentTable(r) {
+  const tbody = $('#eq-summary-table tbody');
+  const sorted = [...r.equipments].sort((a, b) => b.utilization - a.utilization);
+  tbody.innerHTML = sorted.map(eq => `
+    <tr>
+      <td>${eq.name}</td>
+      <td class="num">${fmtDuration(eq.run)}</td>
+      <td class="num">${fmtDuration(eq.down)}</td>
+      <td class="num">${fmtDuration(eq.stop)}</td>
+      <td class="num">
+        <div class="bar-cell"><div class="fill" style="width:${(eq.utilization*100).toFixed(1)}%;background:${eq.utilization>0.8?COLORS.run:eq.utilization>0.5?COLORS.down:COLORS.stop}"></div></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtPct(eq.utilization)}</div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderHeatmap(r) {
+  const wrap = $('#heatmap-wrap');
+  if (r.equipments.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">표시할 설비가 없습니다.</div>';
+    return;
+  }
+  const hours = [];
+  for (let h = 0; h < 24; h++) {
+    const realHour = (h + WORK_DAY_START) % 24;
+    hours.push(realHour);
+  }
+  let html = '<table class="heatmap"><thead><tr><th class="eq">설비</th>';
+  hours.forEach(h => { html += `<th>${String(h).padStart(2,'0')}</th>`; });
+  html += '</tr></thead><tbody>';
+  r.equipments.forEach(eq => {
+    html += `<tr><td class="eq" title="${eq.id}">${eq.name}</td>`;
+    for (let h = 0; h < 24; h++) {
+      const cell = eq.hourly[h];
+      const total = cell.run + cell.down + cell.stop;
+      let bg = '#e5e7eb';
+      let tip = `${eq.name} · ${String((h + WORK_DAY_START) % 24).padStart(2,'0')}시`;
+      if (total > 0) {
+        // 가장 비중 높은 상태 색상, 중첩은 opacity로 표현
+        const dominant = cell.stop >= cell.down && cell.stop >= cell.run ? 'stop'
+          : cell.down >= cell.run ? 'down' : 'run';
+        bg = COLORS[dominant];
+        tip += ` · ${dominant.toUpperCase()} ${cell[dominant]}분`;
+      }
+      html += `<td class="cell" style="background:${bg}" title="${tip}"></td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderHourlyChart(r) {
+  const labels = [];
+  for (let h = 0; h < 24; h++) {
+    labels.push(String((h + WORK_DAY_START) % 24).padStart(2, '0') + '시');
+  }
+  const ctx = $('#chart-hourly').getContext('2d');
+  if (state.charts.hourly) state.charts.hourly.destroy();
+  const run = []; const down = []; const stop = [];
+  for (let h = 0; h < 24; h++) {
+    run.push(r.hourly[h].run);
+    down.push(r.hourly[h].down);
+    stop.push(r.hourly[h].stop);
+  }
+  state.charts.hourly = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Run', data: run, backgroundColor: COLORS.run, stack: 's' },
+        { label: 'Down', data: down, backgroundColor: COLORS.down, stack: 's' },
+        { label: 'Stop', data: stop, backgroundColor: COLORS.stop, stack: 's' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: '분' } } },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmtDuration(c.parsed.y)}` } },
+      },
+    },
+  });
+}
+
+function renderParetoChart(r) {
+  const sorted = [...r.equipments]
+    .map(eq => ({ name: eq.name, downtime: eq.down + eq.stop }))
+    .filter(e => e.downtime > 0)
+    .sort((a, b) => b.downtime - a.downtime)
+    .slice(0, 15);
+  const totalDown = sorted.reduce((s, e) => s + e.downtime, 0) || 1;
+  let cum = 0;
+  const cumulative = sorted.map(e => { cum += e.downtime; return (cum / totalDown) * 100; });
+
+  const ctx = $('#chart-pareto').getContext('2d');
+  if (state.charts.pareto) state.charts.pareto.destroy();
+  state.charts.pareto = new Chart(ctx, {
+    data: {
+      labels: sorted.map(e => e.name),
+      datasets: [
+        { type: 'bar', label: '비가동 시간', data: sorted.map(e => e.downtime), backgroundColor: COLORS.stop, yAxisID: 'y' },
+        { type: 'line', label: '누적 비율 (%)', data: cumulative, borderColor: '#2563eb', backgroundColor: 'transparent', yAxisID: 'y1', tension: 0.2, pointRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        y: { position: 'left', title: { display: true, text: '분' } },
+        y1: { position: 'right', min: 0, max: 100, title: { display: true, text: '누적 %' }, grid: { drawOnChartArea: false } },
+      },
+      plugins: { legend: { position: 'bottom' } },
+    },
+  });
+}
+
+function renderShiftChart(r) {
+  const ctx = $('#chart-shift').getContext('2d');
+  if (state.charts.shift) state.charts.shift.destroy();
+  state.charts.shift = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['주간 (07-19)', '야간 (19-07)'],
+      datasets: [
+        { label: 'Run', data: [r.shift.day.run, r.shift.night.run], backgroundColor: COLORS.run },
+        { label: 'Down', data: [r.shift.day.down, r.shift.night.down], backgroundColor: COLORS.down },
+        { label: 'Stop', data: [r.shift.day.stop, r.shift.night.stop], backgroundColor: COLORS.stop },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: '분' } } },
+      plugins: { legend: { position: 'bottom' } },
+    },
+  });
+}
+
+function renderMoldChart(r) {
+  const wrap = $('#mold-chart-wrap');
+  if (r.totalMold === 0) {
+    wrap.innerHTML = '<div class="empty-state">MOLD 파일이 없거나 데이터가 없습니다.</div>';
+    return;
+  }
+  wrap.innerHTML = '<canvas id="chart-mold"></canvas>';
+  const ctx = $('#chart-mold').getContext('2d');
+  if (state.charts.mold) state.charts.mold.destroy();
+  state.charts.mold = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['전반 12H (07-19)', '후반 12H (19-07)'],
+      datasets: [{
+        label: '생산 수량 (개)',
+        data: [r.moldFirst12, r.moldLast12],
+        backgroundColor: ['#2563eb', '#60a5fa'],
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { title: { display: true, text: '수량' } } },
+    },
+  });
+}
+
+function renderDetailTable(r) {
+  const tbody = $('#detail-table tbody');
+  tbody.innerHTML = r.equipments.map(eq => `
+    <tr>
+      <td>${eq.factory}</td>
+      <td>${eq.name}</td>
+      <td class="num">${eq.run}</td>
+      <td class="num">${eq.down}</td>
+      <td class="num">${eq.stop}</td>
+      <td class="num">${fmtPct(eq.utilization)}</td>
+      <td class="num">${(eq.moldQty || 0).toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+function renderWeekly(r) {
+  const container = $('#weekly-content');
+  if (r.workDays.size < 2) {
+    container.innerHTML = `
+      <div class="empty-state">
+        분석 기간이 ${r.workDays.size}일입니다. 복수 일자를 포함하면 추세가 표시됩니다.<br>
+        <strong>현재 기준일:</strong> ${[...r.workDays].join(', ')}
+      </div>
+    `;
+    return;
+  }
+  container.innerHTML = '<div class="empty-state">다일자 분석 집계는 추가 데이터 수집 시 구현됩니다.</div>';
+}
+
+// ================================================================
+// 필터 UI
+// ================================================================
+function populateFilters(result) {
+  const factories = [...new Set(result.equipments.map(e => e.factory))];
+  const fSel = $('#filter-factory');
+  fSel.innerHTML = '<option value="">전체</option>' + factories.map(f => `<option value="${f}">${f}</option>`).join('');
+  const eSel = $('#filter-equipment');
+  eSel.innerHTML = '<option value="">전체</option>' + result.equipments.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+}
+
+function onFilterChange() {
+  state.filters.factory = $('#filter-factory').value;
+  state.filters.equipment = $('#filter-equipment').value;
+  state.filters.shift = $('#filter-shift').value;
+  renderAll();
+}
+
+['#filter-factory', '#filter-equipment', '#filter-shift'].forEach(sel => {
+  $(sel).addEventListener('change', onFilterChange);
+});
+
+// ================================================================
+// 임계값 모달
+// ================================================================
+$('#threshold-btn').addEventListener('click', () => {
+  if (!state.emsRaw) return;
+  const rows = state.emsRaw.equipments.map(eq => {
+    const t = state.thresholds[eq.id] || { stop: 0.5, run: 1.0 };
+    return `
+      <div class="threshold-row">
+        <div title="${eq.id}">${eq.name || eq.id}</div>
+        <input type="number" step="0.1" data-eq="${eq.id}" data-type="stop" value="${t.stop}">
+        <input type="number" step="0.1" data-eq="${eq.id}" data-type="run" value="${t.run}">
+      </div>
+    `;
+  }).join('');
+  $('#threshold-rows').innerHTML = rows;
+  $('#threshold-modal').classList.add('visible');
+});
+
+$('#threshold-cancel').addEventListener('click', () => {
+  $('#threshold-modal').classList.remove('visible');
+});
+
+$('#threshold-apply').addEventListener('click', () => {
+  $$('#threshold-rows input').forEach(inp => {
+    const eqId = inp.dataset.eq;
+    const type = inp.dataset.type;
+    if (!state.thresholds[eqId]) state.thresholds[eqId] = { stop: 0.5, run: 1.0 };
+    state.thresholds[eqId][type] = Number(inp.value) || 0;
+  });
+  state.analyzed = analyze(state.emsRaw, state.moldRows, state.thresholds);
+  renderAll();
+  $('#threshold-modal').classList.remove('visible');
+  showStatus('임계값을 적용하여 재분석했습니다.', 'success');
+});
+
+// ================================================================
+// 탭 전환
+// ================================================================
+$$('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    $$('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    $$('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
+  });
+});
+
+// ================================================================
+// 전체 렌더
+// ================================================================
+function renderAll() {
+  if (!state.analyzed) return;
+  const r = applyFilters(state.analyzed);
+  renderKpi(r);
+  renderStatusChart(r);
+  renderEquipmentTable(r);
+  renderHeatmap(r);
+  renderHourlyChart(r);
+  renderParetoChart(r);
+  renderShiftChart(r);
+  renderMoldChart(r);
+  renderDetailTable(r);
+  renderWeekly(r);
+}
+
+// ================================================================
+// 분석 실행
+// ================================================================
+$('#analyze-btn').addEventListener('click', async () => {
+  if (!state.emsFile) return;
+  const btn = $('#analyze-btn');
+  btn.disabled = true;
+  btn.textContent = '분석 중...';
+  try {
+    state.emsRaw = await loadEms(state.emsFile);
+    state.moldRows = state.moldFiles.length ? await loadMold(state.moldFiles) : [];
+    state.thresholds = autoThresholds(state.emsRaw);
+    state.analyzed = analyze(state.emsRaw, state.moldRows, state.thresholds);
+    populateFilters(state.analyzed);
+    $('#upload-view').style.display = 'none';
+    $('#dashboard').classList.add('active');
+    renderAll();
+    showStatus(`분석 완료 · 설비 ${state.analyzed.equipments.length}대 · ${state.moldRows.length}건 생산 데이터`, 'success');
+  } catch (err) {
+    console.error(err);
+    showStatus('분석 실패: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '분석하기 →';
+  }
+});
+
+// ================================================================
+// 새 분석
+// ================================================================
+$('#reset-btn').addEventListener('click', () => {
+  if (!confirm('현재 분석 결과를 지우고 처음부터 다시 시작하시겠습니까?')) return;
+  state.emsFile = null;
+  state.moldFiles = [];
+  state.emsRaw = null;
+  state.moldRows = [];
+  state.analyzed = null;
+  renderFileList('#ems-list', [], () => {});
+  renderFileList('#mold-list', [], () => {});
+  Object.values(state.charts).forEach(c => c.destroy());
+  state.charts = {};
+  $('#dashboard').classList.remove('active');
+  $('#upload-view').style.display = '';
+  updateAnalyzeButton();
+});
+
+// ================================================================
+// Excel 보고서 생성
+// ================================================================
+$('#excel-btn').addEventListener('click', () => {
+  if (!state.analyzed) return;
+  const r = applyFilters(state.analyzed);
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: 요약
+  const summaryRows = [
+    ['항목', '값'],
+    ['공장', r.factory],
+    ['분석 기간 시작', r.from || '-'],
+    ['분석 기간 종료', r.to || '-'],
+    ['분석 설비 수', r.equipments.length],
+    ['총 측정 시간 (분)', r.totalMinutes],
+    ['Run (분)', r.totalRun],
+    ['Down (분)', r.totalDown],
+    ['Stop (분)', r.totalStop],
+    ['종합 가동률', fmtPct(r.utilization)],
+    ['총 생산 수량', r.totalMold],
+    ['12H 전반 생산', r.moldFirst12],
+    ['12H 후반 생산', r.moldLast12],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
+  XLSX.utils.book_append_sheet(wb, ws1, '요약');
+
+  // Sheet 2: 설비별
+  const eqHeader = ['공장', '설비ID', '설비명', 'Run(분)', 'Down(분)', 'Stop(분)', '가동률(%)', '생산수량'];
+  const eqRows = [eqHeader, ...r.equipments.map(eq => [
+    eq.factory, eq.id, eq.name,
+    eq.run, eq.down, eq.stop,
+    Number((eq.utilization * 100).toFixed(2)),
+    eq.moldQty || 0,
+  ])];
+  const ws2 = XLSX.utils.aoa_to_sheet(eqRows);
+  XLSX.utils.book_append_sheet(wb, ws2, '설비별 집계');
+
+  // Sheet 3: 시간대별
+  const hourHeader = ['시각', 'Run(분)', 'Down(분)', 'Stop(분)'];
+  const hourRows = [hourHeader];
+  for (let h = 0; h < 24; h++) {
+    const realHour = (h + WORK_DAY_START) % 24;
+    hourRows.push([
+      String(realHour).padStart(2,'0') + ':00',
+      r.hourly[h].run, r.hourly[h].down, r.hourly[h].stop,
+    ]);
+  }
+  const ws3 = XLSX.utils.aoa_to_sheet(hourRows);
+  XLSX.utils.book_append_sheet(wb, ws3, '시간대별');
+
+  // Sheet 4: 교대별
+  const ws4 = XLSX.utils.aoa_to_sheet([
+    ['교대', 'Run(분)', 'Down(분)', 'Stop(분)'],
+    ['주간 (07-19)', r.shift.day.run, r.shift.day.down, r.shift.day.stop],
+    ['야간 (19-07)', r.shift.night.run, r.shift.night.down, r.shift.night.stop],
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws4, '교대별');
+
+  const fname = `saehanFEMS_보고서_${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  showStatus('엑셀 보고서를 다운로드했습니다: ' + fname, 'success');
+});
+
+</script>
+</body>
+</html>

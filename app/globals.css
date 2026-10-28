@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f5f7fb;
+  --foreground: #1f2937;
+}
+
+html, body {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: white; }
+  .print-break { page-break-after: always; }
+}

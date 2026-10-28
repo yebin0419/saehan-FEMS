@@ -60,6 +60,10 @@ docs/
 `.env.local` (이미 작성됨):
 ```
 DATABASE_URL=postgresql://kbsi_app:...@203.255.78.89:15432/saehan?sslmode=require
+# 운영 배포 시에만 설정 (설정하면 전체 접근에 Basic Auth 적용)
+# 로컬 개발에서는 비워두면 인증 생략
+ADMIN_USER=
+ADMIN_PASSWORD=
 ```
 
 ### 2. 설치 (최초 1회)
